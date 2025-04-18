@@ -10,8 +10,8 @@ import FileManager from '@renderer/services/FileManager'
 import { getProviderName } from '@renderer/services/ProviderService'
 import { FileType, FileTypes, KnowledgeBase, KnowledgeItem } from '@renderer/types'
 import { formatFileSize } from '@renderer/utils'
-import { bookExts, documentExts, textExts, thirdPartyApplicationExts } from '@shared/config/constant'
-import { Alert, Button, Dropdown, Empty, message, Tag, Tooltip, Upload } from 'antd'
+import { audioExts, bookExts, documentExts, textExts, thirdPartyApplicationExts } from '@shared/config/constant'
+import { Alert, Button, Dropdown, Empty, message, Modal, Tag, Tooltip, Upload } from 'antd'
 import dayjs from 'dayjs'
 import { ChevronsDown, ChevronsUp, Plus, Settings2 } from 'lucide-react'
 import VirtualList from 'rc-virtual-list'
@@ -30,7 +30,9 @@ interface KnowledgeContentProps {
   selectedBase: KnowledgeBase
 }
 
-const fileTypes = [...bookExts, ...thirdPartyApplicationExts, ...documentExts, ...textExts]
+const streamType = [...audioExts]
+const textType = [...bookExts, ...thirdPartyApplicationExts, ...documentExts, ...textExts]
+const fileTypes = [...textType, ...streamType]
 
 const KnowledgeContent: FC<KnowledgeContentProps> = ({ selectedBase }) => {
   const { t } = useTranslation()
@@ -82,11 +84,14 @@ const KnowledgeContent: FC<KnowledgeContentProps> = ({ selectedBase }) => {
 
   const handleDrop = async (files: File[]) => {
     if (disabled) {
-      return
+      return;
     }
+    if (!files || files.length === 0) return;
 
-    if (files) {
-      const _files: FileType[] = files
+    // 工具函数：按扩展名过滤并转 FileType
+    const mapFilesByExt = (files: File[], exts: string[]): FileType[] =>
+      files
+        .filter((file) => exts.includes(`.${file.name.split('.').pop()}`.toLowerCase()))
         .map((file) => ({
           id: file.name,
           name: file.name,
@@ -96,13 +101,30 @@ const KnowledgeContent: FC<KnowledgeContentProps> = ({ selectedBase }) => {
           count: 1,
           origin_name: file.name,
           type: file.type as FileTypes,
-          created_at: new Date().toISOString()
-        }))
-        .filter(({ ext }) => fileTypes.includes(ext))
-      const uploadedFiles = await FileManager.uploadFiles(_files)
-      addFiles(uploadedFiles)
+          created_at: new Date().toISOString(),
+        }));
+
+    const textFiles: FileType[] = mapFilesByExt(files, textType);
+    const streamFiles: FileType[] = mapFilesByExt(files, streamType);
+
+    // 1. 文本类直接上传
+    if (textFiles.length > 0) {
+      const uploadedFiles = await FileManager.uploadFiles(textFiles);
+      addFiles(uploadedFiles);
     }
-  }
+
+    // 2. 流文件弹窗提示
+    if (streamFiles.length > 0) {
+      Modal.confirm({
+        title: '文件转换',
+        content: '文件中包含音频等流文件，是否需要转为文本后导入？（转换功能后续支持）',
+        okText: t('common.confirm'),
+        cancelText: t('common.cancel'),
+        onOk: () => {},
+        onCancel: () => {},
+      });
+    }
+  };
 
   const handleAddUrl = async () => {
     if (disabled) {
